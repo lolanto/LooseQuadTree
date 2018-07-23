@@ -1,40 +1,7 @@
-#pragma once
-#include "FreeList.h"
-#include <list>
-struct QTRect {
-	float l, r, t, b;
-	QTRect(float l = 0, float t = 0, float r = 0, float b = 0)
-		: l(l), r(r), t(t), b(b) {}
-	bool operator==(const QTRect& rhs) const {
-		return rhs.l == l && rhs.r == r &&
-			rhs.t == t && rhs.b == b;
-	}
-};
-
-inline QTRect& UnionRect(QTRect& inout, const QTRect& in) {
-	inout.l = in.l < inout.l ? in.l : inout.l;
-	inout.r = in.r > inout.r ? in.r : inout.r;
-	inout.t = in.t < inout.t ? in.t : inout.t;
-	inout.b = in.b > inout.b ? in.b : inout.b;
-	return inout;
-}
-
-struct QTPoint {
-	float x, y;
-	QTPoint(float x = 0, float y = 0)
-		: x(x), y(y) {}
-	bool operator==(const QTPoint& rhs) const {
-		return rhs.x == x && rhs.y == y;
-	}
-	QTPoint& operator/(const float& rhs) {
-		x /= rhs; y /= rhs;return *this;}
-	QTPoint& operator*(const float& rhs) {
-		x *= rhs; y *= rhs;return *this;}
-	QTPoint& operator+(const QTPoint& rhs) {
-		x += rhs.x; y += rhs.y; return *this;}
-	QTPoint& operator-(const QTPoint& rhs) {
-		x -= rhs.x; y -= rhs.y; return *this;}
-};
+#ifndef QUADTREE_API_DLL
+#define QUADTREE_API_DLL __declspec(dllexport)
+#endif
+#include "QuadTree.h"
 
 inline QTPoint GetRectCenter(const QTRect& r) {
 	return { (r.r - r.l) / 2 + r.l, (r.b - r.t) / 2 + r.t };
@@ -44,68 +11,20 @@ inline bool IsRectsIntersect(const QTRect& lhs, const QTRect& rhs) {
 	return !(rhs.l > lhs.r || rhs.r < lhs.l || rhs.t > lhs.b || rhs.b < lhs.t);
 }
 
+inline QTRect& UnionRect(QTRect& inout, const QTRect& in) {
+	inout.l = in.l < inout.l ? in.l : inout.l;
+	inout.r = in.r > inout.r ? in.r : inout.r;
+	inout.t = in.t < inout.t ? in.t : inout.t;
+	inout.b = in.b > inout.b ? in.b : inout.b;
+	return inout;
+}
+
 inline bool IsPointInsideRect(const QTRect& rect, const QTPoint& point) {
 	return !(rect.l > point.x || rect.r < point.x || rect.t > point.y || rect.b < point.y);
 }
- 
-struct QNode {
-	// it will be the index of the first sub branch
-	// or it will be the first ele index
-	int first_child;
-	// loose AABB
-	QTRect aabbRect;
-	// count = -1 if this node is a branch or
-	// it's a leaf and count means the number of ele
-	int count;
-	QNode(int first_child = -1, int count = 0)
-		: first_child(first_child), count(count) {}
-};
-struct QNodeEle {
-	QTRect rect;
-	void* vPtr;
-	QNodeEle(QTRect rect = { 0, 0, 0, 0 }, void* vPtr = nullptr)
-		: rect(rect), vPtr(vPtr) {}
-	bool operator==(const QNodeEle& e) const {
-		return e.rect == rect && e.vPtr == vPtr;
-	}
-};
-struct QNodeElePtr {
-	int eleIdx;
-	// point to next eleptr index,
-	// -1 means this is the end of the list
-	int next;
-	QNodeElePtr(int eleidx = -1, int next = -1)
-		:eleIdx(eleidx), next(next) {}
-};
 
-class QuadTree {
-public:
-	QuadTree(QTRect rect, int maxDepth = 3,
-		int maxElePerLeaf = 4);
-	void Insert(const QNodeEle& ele);
-	bool Erase(const QNodeEle& ele);
-	bool Query(const QTRect& rect, std::list<QNodeEle>& retList);
-	bool Query(const QTPoint& point, std::list<QNodeEle>& retList);
-	void Cleanup(); // Cleanup empty branch and update branches aabbRect
-private:
-	void insert(const QTPoint& cp, int cnIdx,
-		const QTPoint& xcp, int xndIdx,
-		int depth);
-	// to find out the leaf which include cp
-	void queryLeaf(const QTPoint& cp, int& nodeIdx);
-	inline void updateAABBSinceInsert(int xndIdx, int& cnIdx);
-	QTRect cleanupHelper(int idx, int& child);
-private:
-	FreeList<QNodeElePtr> elePtrs;
-	FreeList<QNodeEle> eles;
-	std::vector<QNode> nodes;
-	int free_node;
-	int maxDepth;
-	int maxElePerLeaf;
-	QTRect rootRect;
-};
 
-QuadTree::QuadTree(QTRect rect, int maxDepth,	int maxElePerLeaf)
+QuadTree::QuadTree(QTRect rect, int maxDepth, int maxElePerLeaf)
 	: rootRect(rect), free_node(-1), maxDepth(maxDepth), maxElePerLeaf(maxElePerLeaf) {
 	QNode root;
 	nodes.push_back(root);
@@ -335,6 +254,7 @@ inline void QuadTree::updateAABBSinceInsert(int xndIdx, int& cnIdx) {
 	}
 }
 
+// recursion of cleanup
 QTRect QuadTree::cleanupHelper(int idx, int& nChild) {
 	QTRect retRect;
 	QNode& node = nodes[idx];
@@ -344,7 +264,8 @@ QTRect QuadTree::cleanupHelper(int idx, int& nChild) {
 		if (child != -1) {
 			++nChild;
 			retRect = eles[elePtrs[child].eleIdx].rect;
-		} else return retRect;
+		}
+		else return retRect;
 		child = elePtrs[child].next;
 		while (child != -1) {
 			++nChild;
@@ -367,4 +288,116 @@ QTRect QuadTree::cleanupHelper(int idx, int& nChild) {
 		}
 	}
 	return retRect;
+}
+
+// no-recursion of cleanup. It may need some optimization
+void QuadTree::cleanupHelper() {
+	struct Reg {
+		const int idx;
+		int pt; // when pt == 4, reg should pop;
+		Reg(int idx = -1, int pt = 0) : idx(idx), pt(pt) {}
+	};
+	std::vector<Reg> toProcess;
+	std::vector<Reg> tempReg;
+	toProcess.push_back({ 0 });
+	while (toProcess.size()) {
+		Reg curReg = toProcess.back();
+		toProcess.pop_back();
+		// root node is updated cleanup is finished;
+		if (curReg.idx == 0 && (curReg.pt == 4 || curReg.pt == -4)) break;
+		QNode & node = nodes[curReg.idx];
+		if (curReg.pt == 0) {
+			if (node.count == -1) { // it's a branch
+				tempReg.push_back(curReg);
+				toProcess.push_back({ node.first_child + 0 });
+				toProcess.push_back({ node.first_child + 1 });
+				toProcess.push_back({ node.first_child + 2 });
+				toProcess.push_back({ node.first_child + 3 });
+			}
+			else { // it's a leaf
+				   // update leaf's data
+				int child = node.first_child;
+				node.count = 0;
+				node.aabbRect.l = node.aabbRect.r = node.aabbRect.t = node.aabbRect.b = 0;
+				if (child != -1) {
+					++node.count;
+					node.aabbRect = eles[elePtrs[child].eleIdx].rect;
+					child = elePtrs[child].next;
+					while (child != -1) {
+						++node.count;
+						UnionRect(node.aabbRect, eles[elePtrs[child].eleIdx].rect);
+						child = elePtrs[child].next;
+					}
+				}
+				// update parent's data
+				if (!tempReg.size()) continue;
+				Reg& parentReg = tempReg.back();
+				QNode& parent = nodes[parentReg.idx];
+				if (node.count) {
+					if (parentReg.pt <= 0) {
+						parentReg.pt = 1 - parentReg.pt;
+						parent.aabbRect = node.aabbRect;
+					}
+					else {
+						++parentReg.pt;
+						UnionRect(parent.aabbRect, node.aabbRect);
+					}
+				}
+				else {
+					if (parentReg.pt <= 0) --parentReg.pt;
+					else ++parentReg.pt;
+				}
+				if (parentReg.pt == -4) {
+					parent.aabbRect.l = parent.aabbRect.r = parent.aabbRect.t = parent.aabbRect.b = 0;
+					parent.count = 0;
+					nodes[parent.first_child].first_child = free_node;
+					free_node = parent.first_child;
+					parent.first_child = -1;
+					toProcess.push_back(parentReg);
+					tempReg.pop_back();
+				}
+				else if (parentReg.pt == 4) {
+					toProcess.push_back(parentReg);
+					tempReg.pop_back();
+				}
+			}
+		}
+		else if (curReg.pt == 4) {
+			Reg& parentReg = tempReg.back();
+			QNode& parent = nodes[parentReg.idx];
+			if (parentReg.pt <= 0) {
+				parentReg.pt = 1 - parentReg.pt;
+				parent.aabbRect = node.aabbRect;
+			}
+			else {
+				++parentReg.pt;
+				UnionRect(parent.aabbRect, node.aabbRect);
+			}
+			if (parentReg.pt == 4) {
+				toProcess.push_back(parentReg);
+				tempReg.pop_back();
+			}
+		}
+		else if (curReg.pt == -4) {
+			// update parent's data
+			Reg& parentReg = tempReg.back();
+			QNode& parent = nodes[parentReg.idx];
+			if (parentReg.pt <= 0) --parentReg.pt;
+			else ++parentReg.pt;
+			if (parentReg.pt == -4) {
+				parent.aabbRect.l = parent.aabbRect.r = parent.aabbRect.t = parent.aabbRect.b = 0;
+				parent.count = 0;
+				nodes[parent.first_child].first_child = free_node;
+				free_node = parent.first_child;
+				parent.first_child = -1;
+				toProcess.push_back(parentReg);
+				tempReg.pop_back();
+			}
+			else if (parentReg.pt == 4) {
+				toProcess.push_back(parentReg);
+				tempReg.pop_back();
+			}
+		}
+		else { throw("ERROR"); }
+	}
 }
